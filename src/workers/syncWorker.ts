@@ -43,6 +43,10 @@ const sendMessage = (message: WorkerOutboundMessage) => {
 type SyncToLocalMessage = Extract<WorkerInboundMessage, { type: 'SYNC_TO_LOCAL' }>
 type SyncToServerMessage = Extract<WorkerInboundMessage, { type: 'SYNC_TO_SERVER' }>
 
+let lastSavedSceneKey: string | null = null
+let queuedServerSync: SyncToServerMessage | null = null
+let serverSyncQueue: Promise<void> = Promise.resolve()
+
 const handleSyncToLocal = async (data: SyncToLocalMessage) => {
 	const { fileId, elements, files, appState } = data
 
@@ -85,7 +89,7 @@ const handleSyncToLocal = async (data: SyncToLocalMessage) => {
 }
 
 const handleSyncToServer = async (data: SyncToServerMessage) => {
-	const { fileId, url, jwt, elements, files } = data
+	const { fileId, url, jwt, elements, files, sceneKey } = data
 
 	if (!fileId || !url || !jwt) {
 		error('Missing required data for server sync', { fileId, url: !!url, jwt: !!jwt })
@@ -112,17 +116,6 @@ const handleSyncToServer = async (data: SyncToServerMessage) => {
 				data: { elements, files: files || {} },
 			}),
 		})
-
-		if (response.status === 409) {
-			sendMessage({
-				type: 'SERVER_SYNC_COMPLETE',
-				success: true,
-				skipped: true,
-				duration: 0,
-				elementsCount: elements?.length ?? 0,
-			})
-			return
-		}
 
 		if (!response.ok) {
 			let errorMessage = `Server responded with status: ${response.status}`
@@ -159,6 +152,7 @@ const handleSyncToServer = async (data: SyncToServerMessage) => {
 		}
 
 		const duration = performance.now() - startTime
+		lastSavedSceneKey = sceneKey
 
 		sendMessage({
 			type: 'SERVER_SYNC_COMPLETE',
@@ -166,6 +160,7 @@ const handleSyncToServer = async (data: SyncToServerMessage) => {
 			duration,
 			elementsCount: elements.length,
 			response: responseData,
+			sceneKey,
 		})
 	} catch (e) {
 		error('Error syncing to server:', e)
@@ -174,6 +169,22 @@ const handleSyncToServer = async (data: SyncToServerMessage) => {
 			error: e instanceof Error ? e.message : String(e),
 		})
 	}
+}
+
+// One save at a time; a newer scene replaces the one still waiting
+function queueSyncToServer(message: SyncToServerMessage): Promise<void> {
+	const isWaiting = queuedServerSync !== null
+	queuedServerSync = message
+	if (!isWaiting) {
+		serverSyncQueue = serverSyncQueue.then(async () => {
+			const next = queuedServerSync
+			queuedServerSync = null
+			if (next && next.sceneKey !== lastSavedSceneKey) {
+				await handleSyncToServer(next)
+			}
+		})
+	}
+	return serverSyncQueue
 }
 
 const initWorker = () => {
@@ -200,7 +211,11 @@ const handleMessage = async (event: MessageEvent<WorkerInboundMessage>) => {
 			await handleSyncToLocal(message)
 			break
 		case 'SYNC_TO_SERVER':
-			await handleSyncToServer(message)
+			await queueSyncToServer(message)
+			break
+		case 'CLOSE':
+			await serverSyncQueue
+			self.close()
 			break
 		default:
 			// Unknown message type - ignore

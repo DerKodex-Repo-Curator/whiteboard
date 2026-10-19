@@ -15,7 +15,7 @@ import { generateUrl } from '@nextcloud/router'
 import { useShallow } from 'zustand/react/shallow'
 import { initialDataState } from '../constants/excalidraw'
 import logger from '../utils/logger'
-import { computeElementVersionHash, mergeSceneElements } from '../utils/syncSceneData'
+import { computeElementVersionHash, computeSceneKey, mergeSceneElements } from '../utils/syncSceneData'
 import { getLocalBoardDataPolicy } from '../utils/localBoardData.ts'
 import { sanitizeAppStateForSync } from '../utils/sanitizeAppState'
 
@@ -210,6 +210,7 @@ export function useBoardDataManager() {
 
 				const restoredServerElements = restoreElements(serverData.elements, null)
 				const serverHash = computeElementVersionHash(restoredServerElements)
+				useSyncStore.setState({ savedSceneKey: computeSceneKey(restoredServerElements, serverData.files || {}) })
 				const serverScrollToContent = serverData.scrollToContent ?? true
 				const sanitizedServerAppState = sanitizeAppStateForSync(serverData.appState)
 				const sanitizedLocalAppState = sanitizeAppStateForSync(localData?.appState)

@@ -916,7 +916,7 @@
   },
   "src/stores/useSyncStore.ts": {
     "@stylistic/indent": {
-      "count": 35
+      "count": 39
     },
     "@stylistic/padded-blocks": {
       "count": 1
@@ -1104,7 +1104,7 @@
   },
   "src/workers/syncWorker.ts": {
     "@stylistic/indent": {
-      "count": 10
+      "count": 14
     },
     "antfu/top-level-function": {
       "count": 7

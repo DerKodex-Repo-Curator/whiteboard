@@ -21,6 +21,7 @@ interface SyncStore {
 	// Core state
 	worker: Worker | null
 	isWorkerReady: boolean
+	savedSceneKey: string | null
 
 	// Actions
 	setWorker: (worker: Worker | null) => void
@@ -35,6 +36,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 	// State
 	worker: null,
 	isWorkerReady: false,
+	savedSceneKey: null,
 
 	// Actions
 	setWorker: (worker) => set({ worker }),
@@ -91,6 +93,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 						break
 
 					case 'SERVER_SYNC_COMPLETE':
+						if (get().worker === syncWorker) {
+							set({ savedSceneKey: data.sceneKey })
+						}
 						// Use the imported logSyncResult function
 						logSyncResult('server', {
 							status: 'success',
@@ -131,7 +136,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 	terminateWorker: () => {
 		const { worker } = get()
 		if (worker) {
-			worker.terminate()
+			worker.postMessage({ type: 'CLOSE' })
 			set({
 				worker: null,
 				isWorkerReady: false,
